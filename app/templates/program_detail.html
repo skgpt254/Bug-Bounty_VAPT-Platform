@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% block title %}{{ program.name }} — Recon/VAPT{% endblock %}
+{% block content %}
+
+<a href="/" class="muted" style="text-decoration:none; font-size:12px;">&larr; all programs</a>
+
+<div class="panel-header" style="margin-top:14px;">
+  <div>
+    <h2 style="font-size:20px;">{{ program.name }}</h2>
+    <div class="muted" style="font-size:12px;">{{ program.root_domain }} &middot; scope <code>{{ program.scope_regex }}</code></div>
+  </div>
+  <div class="actions" style="margin-top:0;">
+    <form method="post" action="/programs/{{ program.id }}/scan" style="display:inline;">
+      <input type="hidden" name="mode" value="incremental" />
+      <button type="submit" class="secondary">Quick scan</button>
+    </form>
+    <form method="post" action="/programs/{{ program.id }}/scan" style="display:inline;">
+      <input type="hidden" name="mode" value="full" />
+      <button type="submit">Full scan (incl. fuzzing)</button>
+    </form>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="panel-header"><h2>Continuous monitoring</h2></div>
+  <form method="post" action="/programs/{{ program.id }}/monitoring">
+    <label><input type="checkbox" name="enabled" value="true" {% if program.monitoring_enabled %}checked{% endif %} />
+      Run an incremental scan automatically, and alert only on genuinely new findings
+    </label>
+    <label>Interval (minutes)</label>
+    <input type="number" name="interval_minutes" value="{{ program.monitoring_interval_minutes }}" min="15" />
+    <label>Webhook URL</label>
+    <input type="url" name="webhook_url" value="{{ program.webhook_url }}" placeholder="https://hooks.slack.com/services/..." />
+    <div class="actions"><button type="submit" class="secondary">Save monitoring settings</button></div>
+  </form>
+</div>
+
+{% if diff and (diff.new_subdomains or diff.new_endpoints or diff.new_findings) %}
+<div class="panel" style="border-color: var(--accent);">
+  <div class="panel-header"><h2>Since last scan</h2></div>
+  {% if diff.new_subdomains %}
+    <p><strong>{{ diff.new_subdomains|length }}</strong> new subdomain(s): {{ diff.new_subdomains|join(", ") }}</p>
+  {% endif %}
+  {% if diff.new_endpoints %}
+    <p><strong>{{ diff.new_endpoints|length }}</strong> new endpoint(s)</p>
+  {% endif %}
+  {% if diff.new_findings %}
+    <p><strong>{{ diff.new_findings|length }}</strong> new finding(s) — flagged <span class="tag">NEW</span> in the table below</p>
+  {% endif %}
+</div>
+{% endif %}
+
+<div class="panel">
+  <div class="panel-header"><h2>Scan history</h2></div>
+  {% if scans %}
+  <table>
+    <thead><tr><th>ID</th><th>Mode</th><th>Status</th><th>Started</th><th>Phases run</th></tr></thead>
+    <tbody>
+      {% for scan in scans %}
+      <tr>
+        <td>#{{ scan.id }}</td>
+        <td>{{ scan.mode.value }}</td>
+        <td class="status-{{ scan.status.value }}">{{ scan.status.value }}</td>
+        <td class="muted">{{ scan.started_at.strftime("%Y-%m-%d %H:%M UTC") }}</td>
+        <td class="muted">{{ scan.phases_run or "—" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-state">No scans yet — trigger one above.</div>
+  {% endif %}
+</div>
+
+{% if latest_completed %}
+<div class="panel">
+  <div class="panel-header">
+    <h2>Findings — scan #{{ latest_completed.id }}</h2>
+    <span class="muted" style="font-size:12px;">{{ findings|length }} total</span>
+  </div>
+  {% if findings %}
+  <table>
+    <thead><tr><th>Severity</th><th>Type</th><th>Name</th><th>Target</th><th>Detail</th></tr></thead>
+    <tbody>
+      {% for f in findings %}
+      <tr class="{% if f.is_new %}is-new{% endif %}">
+        <td><span class="sev-chip sev-{{ f.severity.value }}">{{ f.severity.value }}</span></td>
+        <td class="muted">{{ f.finding_type }}</td>
+        <td>{{ f.name }}</td>
+        <td class="muted" style="max-width:280px; overflow-wrap:anywhere;">{{ f.target }}</td>
+        <td class="muted" style="max-width:320px; overflow-wrap:anywhere;">{{ f.detail[:160] }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-state">No findings on this scan. Clean result.</div>
+  {% endif %}
+</div>
+
+<div class="panel">
+  <div class="panel-header"><h2>Assets — scan #{{ latest_completed.id }}</h2></div>
+  <div class="tabs">
+    <a href="#subdomains" class="active">Subdomains ({{ subdomains|length }})</a>
+    <a href="#endpoints">Live endpoints ({{ endpoints|length }})</a>
+  </div>
+  <table id="subdomains">
+    <thead><tr><th>Host</th><th>Resolved IP</th><th>Source</th></tr></thead>
+    <tbody>
+      {% for s in subdomains[:100] %}
+      <tr class="{% if s.is_new %}is-new{% endif %}">
+        <td>{{ s.hostname }}</td>
+        <td class="muted">{{ s.resolved_ip or "—" }}</td>
+        <td class="muted">{{ s.source or "—" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% if subdomains|length > 100 %}<div class="muted" style="margin-top:8px;">showing first 100 of {{ subdomains|length }}</div>{% endif %}
+</div>
+{% endif %}
+
+{% endblock %}

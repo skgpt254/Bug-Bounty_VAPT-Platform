@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Programs — Recon/VAPT{% endblock %}
+{% block content %}
+
+<div class="panel-header">
+  <h2>Programs</h2>
+</div>
+
+{% if summaries %}
+<div class="program-grid">
+  {% for s in summaries %}
+  <a href="/programs/{{ s.program.id }}" class="program-card">
+    <h3>{{ s.program.name }}</h3>
+    <div class="program-domain">{{ s.program.root_domain }}</div>
+    <div class="monitor-pill {% if s.program.monitoring_enabled %}active{% endif %}">
+      <span class="dot"></span>
+      {% if s.program.monitoring_enabled %}
+        monitoring every {{ s.program.monitoring_interval_minutes }}m
+      {% else %}
+        monitoring off
+      {% endif %}
+    </div>
+    {% if s.latest_scan %}
+      <div class="muted" style="font-size:12px; margin-bottom:10px;">
+        last scan: <span class="status-{{ s.latest_scan.status.value }}">{{ s.latest_scan.status.value }}</span>
+        &middot; {{ s.latest_scan.mode.value }}
+      </div>
+      <div class="sev-row">
+        {% for sev in ["critical","high","medium","low"] %}
+          {% if s.sev_counts.get(sev) %}
+            <span class="sev-chip sev-{{ sev }}">{{ sev }} &middot; {{ s.sev_counts.get(sev) }}</span>
+          {% endif %}
+        {% endfor %}
+        {% if not s.sev_counts %}<span class="muted" style="font-size:12px;">no findings yet</span>{% endif %}
+      </div>
+    {% else %}
+      <div class="muted" style="font-size:12px;">no scans run yet</div>
+    {% endif %}
+  </a>
+  {% endfor %}
+</div>
+{% else %}
+<div class="panel"><div class="empty-state">No programs yet. Add scope below to run your first scan.</div></div>
+{% endif %}
+
+<div class="panel" style="margin-top:24px;">
+  <details>
+    <summary>+ Add a program / scope</summary>
+    <form method="post" action="/programs/create">
+      <label>Program name</label>
+      <input type="text" name="name" placeholder="e.g. Acme Corp Bug Bounty" required />
+
+      <label>Root domain</label>
+      <input type="text" name="root_domain" placeholder="example.com" required />
+
+      <label>Scope regex (hosts/URLs must match this to be touched by ANY active phase)</label>
+      <input type="text" name="scope_regex" placeholder=".*\.example\.com$" required />
+
+      <label>Out-of-scope regex (optional — takes priority over scope match)</label>
+      <input type="text" name="out_of_scope_regex" placeholder="mail\.example\.com" />
+
+      <label><input type="checkbox" name="monitoring_enabled" value="true" /> Enable continuous monitoring</label>
+
+      <label>Monitoring interval (minutes)</label>
+      <input type="number" name="monitoring_interval_minutes" value="360" min="15" />
+
+      <label>Alert webhook URL (Slack/Discord incoming webhook — optional)</label>
+      <input type="url" name="webhook_url" placeholder="https://hooks.slack.com/services/..." />
+
+      <div class="actions">
+        <button type="submit">Create program</button>
+      </div>
+    </form>
+  </details>
+</div>
+
+{% endblock %}

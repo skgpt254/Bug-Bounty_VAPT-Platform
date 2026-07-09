@@ -1,0 +1,167 @@
+:root {
+  --bg: #0b1220;
+  --panel: #121b2b;
+  --panel-raised: #16223582;
+  --border: #223047;
+  --text: #e6edf3;
+  --muted: #7a8ca3;
+  --accent: #2dd4bf;
+  --accent-dim: #2dd4bf22;
+  --critical: #f43f5e;
+  --high: #fb923c;
+  --medium: #facc15;
+  --low: #38bdf8;
+  --info: #64748b;
+  --radius: 10px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background:
+    radial-gradient(circle at 15% 0%, #16223a 0%, transparent 45%),
+    var(--bg);
+  color: var(--text);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+h1, h2, h3, .brand {
+  font-family: "Space Grotesk", sans-serif;
+  letter-spacing: -0.01em;
+}
+
+.accent { color: var(--accent); }
+
+/* Thin animated sweep across the very top of the page — a nod to continuous
+   monitoring polling the scope on an interval. Subtle; not a decoration for
+   its own sake. Respects reduced-motion preference. */
+.scanline {
+  position: fixed;
+  top: 0; left: -30%;
+  width: 30%; height: 2px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  opacity: 0.55;
+  animation: sweep 6s linear infinite;
+  z-index: 50;
+}
+@keyframes sweep {
+  0% { left: -30%; }
+  100% { left: 100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .scanline { animation: none; display: none; }
+}
+
+.topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 18px 32px;
+  border-bottom: 1px solid var(--border);
+  background: #0d1526cc;
+  backdrop-filter: blur(6px);
+  position: sticky; top: 0; z-index: 40;
+}
+.brand { color: var(--text); text-decoration: none; font-weight: 600; font-size: 18px; }
+.brand-mark { color: var(--accent); }
+.topnav a { color: var(--muted); text-decoration: none; margin-left: 24px; font-size: 13px; }
+.topnav a:hover { color: var(--text); }
+
+.shell { max-width: 1100px; margin: 0 auto; padding: 32px; }
+
+.footer {
+  text-align: center; color: var(--muted); font-size: 12px;
+  padding: 40px 20px; border-top: 1px solid var(--border); margin-top: 60px;
+}
+.footer code { color: var(--accent); }
+
+/* ---- cards / panels ---- */
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-bottom: 20px;
+}
+.panel-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 14px;
+}
+.panel-header h2 { margin: 0; font-size: 16px; }
+
+.program-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+.program-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px;
+  text-decoration: none;
+  color: var(--text);
+  display: block;
+  transition: border-color .15s ease, transform .15s ease;
+}
+.program-card:hover { border-color: var(--accent); transform: translateY(-1px); }
+.program-card h3 { margin: 0 0 4px 0; font-size: 16px; font-family: "Space Grotesk", sans-serif; }
+.program-domain { color: var(--muted); font-size: 12px; margin-bottom: 12px; }
+.monitor-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 11px; color: var(--muted); border: 1px solid var(--border);
+  padding: 2px 8px; border-radius: 999px; margin-bottom: 10px;
+}
+.monitor-pill.active { color: var(--accent); border-color: var(--accent-dim); background: var(--accent-dim); }
+.dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+.sev-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.sev-chip {
+  font-size: 11px; padding: 2px 8px; border-radius: 6px; border: 1px solid var(--border);
+}
+.sev-critical { color: var(--critical); border-color: var(--critical); }
+.sev-high { color: var(--high); border-color: var(--high); }
+.sev-medium { color: var(--medium); border-color: var(--medium); }
+.sev-low { color: var(--low); border-color: var(--low); }
+.sev-info { color: var(--info); border-color: var(--info); }
+
+/* ---- forms ---- */
+label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; margin-top: 12px; }
+input[type=text], input[type=number], input[type=url], textarea, select {
+  width: 100%; background: #0d1526; border: 1px solid var(--border); border-radius: 6px;
+  color: var(--text); padding: 8px 10px; font-family: inherit; font-size: 13px;
+}
+input[type=checkbox] { margin-right: 6px; }
+button, .btn {
+  background: var(--accent); color: #04231f; border: none; border-radius: 6px;
+  padding: 9px 16px; font-family: "Space Grotesk", sans-serif; font-weight: 600;
+  font-size: 13px; cursor: pointer; text-decoration: none; display: inline-block;
+}
+button.secondary, .btn.secondary {
+  background: transparent; color: var(--text); border: 1px solid var(--border);
+}
+button:hover { opacity: 0.9; }
+.actions { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
+details > summary { cursor: pointer; color: var(--accent); font-size: 13px; margin-bottom: 10px; }
+
+/* ---- tables ---- */
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+th { color: var(--muted); font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+tr.is-new td:first-child { position: relative; }
+tr.is-new td:first-child::before {
+  content: "NEW"; position: absolute; left: -2px; top: 50%; transform: translateY(-50%) translateX(-100%);
+  font-size: 9px; color: var(--accent); border: 1px solid var(--accent); border-radius: 4px; padding: 1px 4px;
+}
+.muted { color: var(--muted); }
+.empty-state { color: var(--muted); font-size: 13px; padding: 20px 0; text-align: center; }
+
+.tag { font-size: 11px; padding: 2px 6px; border: 1px solid var(--border); border-radius: 4px; color: var(--muted); }
+.status-completed { color: var(--accent); }
+.status-running { color: var(--medium); }
+.status-failed { color: var(--critical); }
+.status-queued { color: var(--muted); }
+
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+.tabs a {
+  color: var(--muted); text-decoration: none; padding: 8px 14px; font-size: 13px;
+  border-bottom: 2px solid transparent;
+}
+.tabs a.active { color: var(--text); border-color: var(--accent); }

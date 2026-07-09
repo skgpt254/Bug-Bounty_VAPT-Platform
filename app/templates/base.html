@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>{% block title %}Recon Platform{% endblock %}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+<div class="scanline"></div>
+<header class="topbar">
+  <a href="/" class="brand">
+    <span class="brand-mark">&gt;_</span> Recon<span class="accent">/</span>VAPT
+  </a>
+  <nav class="topnav">
+    <a href="/">Programs</a>
+    <a href="/docs" target="_blank">API</a>
+  </nav>
+</header>
+<main class="shell">
+  {% block content %}{% endblock %}
+</main>
+<footer class="footer">
+  <span>Every active phase is scope-gated — nothing fires outside <code>scope_regex</code>.</span>
+</footer>
+</body>
+</html>
