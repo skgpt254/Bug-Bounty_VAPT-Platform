@@ -32,6 +32,7 @@ from app.core.phases import (
     vuln_scan, fuzzing, cors_check, takeover_check, cloud_check, enrichment,
 )
 from app.core.scope import ScopeFilter
+from app.core.tool_runner import collect_stderr_warnings
 from app.models import Program, ScanRun, ScanMode, ScanStatus, Subdomain, Endpoint, Finding, utcnow
 
 logger = logging.getLogger("bugbounty.orchestrator")
@@ -154,7 +155,18 @@ async def run_scan(
         scan.finished_at = utcnow()
         scan.phases_run = ",".join(phases_run)
         scan.wildcard_dns = dns_result["wildcard"]
+
+        tool_warnings = collect_stderr_warnings(workdir)
+        scan.tool_warnings = "\n".join(tool_warnings)
         await session.commit()
+
+        if tool_warnings and not all_findings:
+            logger.warning(
+                "scan %s: 0 findings AND %d tool warning(s) present — the empty result is likely "
+                "caused by a broken tool invocation, not a genuinely clean target. Check "
+                "scan.tool_warnings / the workspace *.stderr.log files before trusting this result.",
+                scan.id, len(tool_warnings),
+            )
 
         # ---- diff against previous run + alert on genuinely new findings ----
         diff = await diff_engine.compute_diff(session, program, scan)
@@ -169,6 +181,7 @@ async def run_scan(
         scan.error = str(exc)
         scan.finished_at = utcnow()
         scan.phases_run = ",".join(phases_run)
+        scan.tool_warnings = "\n".join(collect_stderr_warnings(workdir))
         await session.commit()
 
     return scan

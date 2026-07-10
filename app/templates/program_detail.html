@@ -71,6 +71,18 @@
 </div>
 {% endif %}
 
+{% if latest_completed and latest_completed.tool_warnings %}
+<div class="alert alert-error">
+  <strong>{{ latest_completed.tool_warnings.split('\n')|length }} tool warning(s) on this scan.</strong>
+  {% if not findings %}This scan found 0 findings — treat that as <em>unverified</em>, not "clean", until you've checked these:{% else %}Some phases may have under-reported:{% endif %}
+  <ul style="margin:8px 0 0; padding-left:18px;">
+    {% for w in latest_completed.tool_warnings.split('\n') %}
+    <li class="text-mono" style="font-size:12px; margin-bottom:4px;">{{ w }}</li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
 {% if latest_completed and latest_completed.wildcard_dns %}
 <div class="alert alert-info">
   This zone has wildcard DNS — any subdomain resolves to something even if it wasn't intentionally

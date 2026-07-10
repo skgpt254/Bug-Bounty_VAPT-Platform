@@ -40,6 +40,7 @@ class ScanRunOut(BaseModel):
     phases_run: str
     error: str
     wildcard_dns: bool = False
+    tool_warnings: str = ""
 
     model_config = {"from_attributes": True}
 

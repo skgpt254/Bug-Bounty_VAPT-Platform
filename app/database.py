@@ -22,6 +22,7 @@ class Base(DeclarativeBase):
 _SQLITE_COLUMN_MIGRATIONS: list[tuple[str, str, str]] = [
     # (table, column, "ALTER TABLE ... ADD COLUMN ..." fragment after the column name)
     ("scan_runs", "wildcard_dns", "BOOLEAN DEFAULT 0"),
+    ("scan_runs", "tool_warnings", "TEXT DEFAULT ''"),
     ("subdomains", "wildcard_suspect", "BOOLEAN DEFAULT 0"),
     ("findings", "confidence", "VARCHAR(20) DEFAULT 'confirmed'"),
 ]

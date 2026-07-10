@@ -82,6 +82,12 @@ class ScanRun(Base):
     # True if the root domain has a wildcard DNS record — when set, resolved
     # subdomains alone are weaker evidence of a real host (see dns_resolve.py).
     wildcard_dns: Mapped[bool] = mapped_column(default=False)
+    # Non-fatal CLI tool failures (wrong flags, PATH collision, auth failure)
+    # collected from this scan's *.stderr.log files. Empty phase results
+    # caused by a broken tool call are otherwise indistinguishable from a
+    # genuinely empty finding — this is what makes that diagnosable from
+    # the dashboard instead of only from server logs.
+    tool_warnings: Mapped[str] = mapped_column(Text, default="")
 
     program: Mapped["Program"] = relationship(back_populates="scan_runs")
     subdomains: Mapped[list["Subdomain"]] = relationship(back_populates="scan_run", cascade="all, delete-orphan")
