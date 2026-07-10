@@ -125,6 +125,156 @@ async def github_subdomains(domain: str, workdir: Path) -> set[str]:
     return set()
 
 
+# ---- API-backed sources — each is a no-op returning an empty set if its
+# key isn't configured in .env, so the platform works with zero keys and
+# gets progressively more thorough as you add them. ----
+
+async def shodan(session: aiohttp.ClientSession, domain: str) -> set[str]:
+    if not settings.shodan_api_key:
+        return set()
+    data = await _fetch_json(
+        session, f"https://api.shodan.io/dns/domain/{domain}?key={settings.shodan_api_key}"
+    )
+    if not data:
+        return set()
+    return {f"{sub}.{domain}" if sub != "" else domain for sub in data.get("subdomains", [])}
+
+
+async def censys(session: aiohttp.ClientSession, domain: str) -> set[str]:
+    if not (settings.censys_api_id and settings.censys_api_secret):
+        return set()
+    auth = aiohttp.BasicAuth(settings.censys_api_id, settings.censys_api_secret)
+    try:
+        async with session.post(
+            "https://search.censys.io/api/v2/hosts/search",
+            json={"q": f"services.certificate.parsed.names: {domain}", "per_page": 100},
+            auth=auth, timeout=20, ssl=False,
+        ) as resp:
+            if resp.status != 200:
+                return set()
+            data = await resp.json()
+    except Exception as exc:
+        logger.debug("censys fetch failed: %s", exc)
+        return set()
+    hosts = set()
+    for hit in data.get("result", {}).get("hits", []):
+        for name in hit.get("names", []) or []:
+            hosts.add(name)
+    return hosts
+
+
+async def securitytrails(session: aiohttp.ClientSession, domain: str) -> set[str]:
+    if not settings.securitytrails_api_key:
+        return set()
+    # SecurityTrails needs the key as a header, not a query param, so this
+    # can't go through the generic _fetch_json helper.
+    try:
+        async with session.get(
+            f"https://api.securitytrails.com/v1/domain/{domain}/subdomains",
+            headers={"APIKEY": settings.securitytrails_api_key}, timeout=20, ssl=False,
+        ) as resp:
+            if resp.status != 200:
+                return set()
+            data = await resp.json()
+    except Exception as exc:
+        logger.debug("securitytrails fetch failed: %s", exc)
+        return set()
+    return {f"{sub}.{domain}" for sub in data.get("subdomains", [])}
+
+
+async def virustotal(session: aiohttp.ClientSession, domain: str) -> set[str]:
+    if not settings.virustotal_api_key:
+        return set()
+    try:
+        async with session.get(
+            f"https://www.virustotal.com/api/v3/domains/{domain}/subdomains?limit=1000",
+            headers={"x-apikey": settings.virustotal_api_key}, timeout=20, ssl=False,
+        ) as resp:
+            if resp.status != 200:
+                return set()
+            data = await resp.json()
+    except Exception as exc:
+        logger.debug("virustotal fetch failed: %s", exc)
+        return set()
+    return {item.get("id", "") for item in data.get("data", [])}
+
+
+async def urlscan(session: aiohttp.ClientSession, domain: str) -> set[str]:
+    headers = {"API-Key": settings.urlscan_api_key} if settings.urlscan_api_key else {}
+    try:
+        async with session.get(
+            f"https://urlscan.io/api/v1/search/?q=domain:{domain}&size=100",
+            headers=headers, timeout=20, ssl=False,
+        ) as resp:
+            if resp.status != 200:
+                return set()
+            data = await resp.json()
+    except Exception as exc:
+        logger.debug("urlscan fetch failed: %s", exc)
+        return set()
+    hosts = set()
+    for result in data.get("results", []):
+        page = result.get("page", {})
+        if page.get("domain"):
+            hosts.add(page["domain"])
+    return hosts
+
+
+async def chaos(domain: str, workdir: Path) -> set[str]:
+    """ProjectDiscovery Chaos dataset — curated bug-bounty subdomain data."""
+    if not settings.chaos_api_key:
+        return set()
+    try:
+        async with aiohttp.ClientSession(headers={"Authorization": settings.chaos_api_key}) as s:
+            async with s.get(f"https://dns.projectdiscovery.io/dns/{domain}/subdomains", timeout=20, ssl=False) as resp:
+                if resp.status != 200:
+                    return set()
+                data = await resp.json()
+    except Exception as exc:
+        logger.debug("chaos fetch failed: %s", exc)
+        return set()
+    return {f"{sub}.{domain}" for sub in data.get("subdomains", [])}
+
+
+async def binaryedge(session: aiohttp.ClientSession, domain: str) -> set[str]:
+    if not settings.binaryedge_api_key:
+        return set()
+    try:
+        async with session.get(
+            f"https://api.binaryedge.io/v2/query/domains/subdomain/{domain}",
+            headers={"X-Key": settings.binaryedge_api_key}, timeout=20, ssl=False,
+        ) as resp:
+            if resp.status != 200:
+                return set()
+            data = await resp.json()
+    except Exception as exc:
+        logger.debug("binaryedge fetch failed: %s", exc)
+        return set()
+    return set(data.get("events", []))
+
+
+async def leakix(session: aiohttp.ClientSession, domain: str) -> set[str]:
+    if not settings.leakix_api_key:
+        return set()
+    try:
+        async with session.get(
+            f"https://leakix.net/api/subdomains/{domain}",
+            headers={"api-key": settings.leakix_api_key}, timeout=20, ssl=False,
+        ) as resp:
+            if resp.status != 200:
+                return set()
+            data = await resp.json()
+    except Exception as exc:
+        logger.debug("leakix fetch failed: %s", exc)
+        return set()
+    hosts = set()
+    for entry in data if isinstance(data, list) else []:
+        subdomain = entry.get("subdomain", "")
+        if subdomain:
+            hosts.add(subdomain)
+    return hosts
+
+
 async def run(domain: str, workdir: Path) -> dict:
     """Run every passive source concurrently, merge + scope-clean the results."""
     workdir = workdir / "passive"
@@ -139,12 +289,22 @@ async def run(domain: str, workdir: Path) -> dict:
             "wayback": wayback(session, domain),
             "rapiddns": rapiddns(session, domain),
             "otx": otx(session, domain),
+            "shodan": shodan(session, domain),
+            "censys": censys(session, domain),
+            "securitytrails": securitytrails(session, domain),
+            "virustotal": virustotal(session, domain),
+            "urlscan": urlscan(session, domain),
+            "chaos": chaos(domain, workdir),
+            "binaryedge": binaryedge(session, domain),
+            "leakix": leakix(session, domain),
             "subfinder": subfinder(domain, workdir),
             "assetfinder": assetfinder(domain, workdir),
             "github_subdomains": github_subdomains(domain, workdir),
         }
         done = await _asyncio.gather(*tasks.values(), return_exceptions=True)
         for key, value in zip(tasks.keys(), done):
+            if isinstance(value, Exception):
+                logger.debug("passive source %s raised: %s", key, value)
             results[key] = value if isinstance(value, set) else set()
 
     all_hosts: set[str] = set()

@@ -21,6 +21,61 @@ from app.core.tool_runner import has_tool, run_tool
 
 logger = logging.getLogger("bugbounty.http_probe")
 
+# Deliberately small, high-precision signature set — header/body substrings
+# that are strong single-source evidence of a technology. This exists so the
+# native fallback (used when httpx CLI isn't installed) isn't blind on tech
+# detection; it will never be as thorough as httpx's Wappalyzer-derived
+# fingerprint database, and that's stated in the finding rather than implied.
+_HEADER_TECH_SIGNATURES: list[tuple[str, str, str]] = [
+    # (header name, substring to match in its value, tech label)
+    ("server", "cloudflare", "Cloudflare"),
+    ("server", "nginx", "nginx"),
+    ("server", "apache", "Apache"),
+    ("server", "microsoft-iis", "IIS"),
+    ("server", "openresty", "OpenResty"),
+    ("x-powered-by", "php", "PHP"),
+    ("x-powered-by", "express", "Express.js"),
+    ("x-powered-by", "asp.net", "ASP.NET"),
+    ("x-aspnet-version", "", "ASP.NET"),
+    ("x-drupal-cache", "", "Drupal"),
+    ("x-generator", "wordpress", "WordPress"),
+    ("x-varnish", "", "Varnish"),
+    ("via", "varnish", "Varnish"),
+    ("cf-ray", "", "Cloudflare"),
+    ("x-amz-cf-id", "", "Amazon CloudFront"),
+    ("x-vercel-id", "", "Vercel"),
+    ("x-github-request-id", "", "GitHub Pages"),
+]
+_BODY_TECH_SIGNATURES: list[tuple[str, str]] = [
+    ('name="generator" content="wordpress', "WordPress"),
+    ("wp-content/", "WordPress"),
+    ("wp-includes/", "WordPress"),
+    ("/sites/default/files", "Drupal"),
+    ("joomla", "Joomla"),
+    ("__next", "Next.js"),
+    ("data-reactroot", "React"),
+    ("ng-version", "Angular"),
+    ("id=\"__nuxt\"", "Nuxt.js"),
+    ("shopify", "Shopify"),
+    ("cdn.shopify.com", "Shopify"),
+    ("laravel_session", "Laravel"),
+    ("csrf-token", "CSRF-protected framework (Laravel/Rails/Django-style)"),
+]
+
+
+def _fingerprint_tech(headers: dict, body: str) -> list[str]:
+    found: set[str] = set()
+    headers_lower = {k.lower(): v.lower() for k, v in headers.items()}
+    for header_name, substr, label in _HEADER_TECH_SIGNATURES:
+        value = headers_lower.get(header_name)
+        if value is not None and (substr == "" or substr in value):
+            found.add(label)
+    body_lower = body.lower()[:20000]  # bound the scan — no need to regex a multi-MB body
+    for substr, label in _BODY_TECH_SIGNATURES:
+        if substr in body_lower:
+            found.add(label)
+    return sorted(found)
+
 
 async def probe_with_cli(hosts: list[str], workdir: Path) -> list[dict]:
     input_data = "\n".join(hosts)
@@ -70,7 +125,7 @@ async def probe_native(hosts: list[str], workdir: Path, concurrency: int = 20) -
                             "url": str(resp.url),
                             "status_code": resp.status,
                             "title": title,
-                            "tech": "",
+                            "tech": ", ".join(_fingerprint_tech(dict(resp.headers), body)),
                             "content_length": len(body),
                         }
                 except Exception:

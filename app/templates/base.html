@@ -3,20 +3,25 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>{% block title %}Recon Platform{% endblock %}</title>
+<title>{% block title %}Recon/VAPT{% endblock %}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body>
 <div class="scanline"></div>
 <header class="topbar">
   <a href="/" class="brand">
-    <span class="brand-mark">&gt;_</span> Recon<span class="accent">/</span>VAPT
+    <span class="brand-mark">&gt;_</span> Recon/VAPT
   </a>
   <nav class="topnav">
     <a href="/">Programs</a>
-    <a href="/docs" target="_blank">API</a>
+    <a href="/docs" target="_blank" rel="noopener">API</a>
+    {% if auth_enabled %}
+    <form method="post" action="/logout" style="display:inline;">
+      <button type="submit">Sign out</button>
+    </form>
+    {% endif %}
   </nav>
 </header>
 <main class="shell">
@@ -25,5 +30,7 @@
 <footer class="footer">
   <span>Every active phase is scope-gated — nothing fires outside <code>scope_regex</code>.</span>
 </footer>
+<div id="toast-region"></div>
+<script src="/static/app.js"></script>
 </body>
 </html>

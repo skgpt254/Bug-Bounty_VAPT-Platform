@@ -70,7 +70,10 @@ async def native_takeover_check(hosts: list[str], workdir: Path) -> list[dict]:
                         "severity": "high",
                         "target": host,
                         "name": f"possible subdomain takeover via {service}",
-                        "detail": f"CNAME={cname}; matched fingerprint '{fingerprint}'",
+                        "detail": f"CNAME={cname}; matched fingerprint '{fingerprint}'. "
+                                  f"Heuristic CNAME+response-body match — verify manually before reporting: "
+                                  f"try claiming the resource on {service} yourself to confirm.",
+                        "confidence": "unconfirmed",
                     })
     return findings
 
@@ -101,6 +104,7 @@ async def nuclei_takeover_check(live_urls: list[str], workdir: Path) -> list[dic
                 "target": rec.get("matched-at", ""),
                 "name": info.get("name", "subdomain takeover"),
                 "detail": rec.get("template-id", ""),
+                "confidence": "confirmed",
             })
     return findings
 

@@ -5,10 +5,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_session
+from app.core.security import require_api_key
 from app.models import Finding
 from app.schemas import FindingOut
 
-router = APIRouter(prefix="/api/programs", tags=["findings"])
+router = APIRouter(prefix="/api/programs", tags=["findings"], dependencies=[Depends(require_api_key)])
 
 
 @router.get("/{program_id}/findings", response_model=list[FindingOut])

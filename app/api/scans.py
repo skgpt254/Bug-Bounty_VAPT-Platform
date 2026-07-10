@@ -5,11 +5,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.orchestrator import run_scan
+from app.core.security import require_api_key
 from app.database import async_session, get_session
 from app.models import Program, ScanMode, ScanRun, ScanStatus
 from app.schemas import ScanRunOut, ScanTrigger
 
-router = APIRouter(tags=["scans"])
+router = APIRouter(tags=["scans"], dependencies=[Depends(require_api_key)])
 
 
 async def _background_scan(program_id: int, scan_id: int, mode: ScanMode) -> None:

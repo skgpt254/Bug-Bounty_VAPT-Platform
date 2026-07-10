@@ -1,27 +1,41 @@
 from __future__ import annotations
 
-import re
-
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import is_public_http_target
 from app.core import scheduler as scheduler_module
+from app.core.scope import UnsafeScopeRegexError, validate_scope_regex
+from app.core.security import require_api_key
 from app.database import get_session
 from app.models import Program
 from app.schemas import ProgramCreate, ProgramOut
 
-router = APIRouter(prefix="/api/programs", tags=["programs"])
+router = APIRouter(prefix="/api/programs", tags=["programs"], dependencies=[Depends(require_api_key)])
+
+
+def _validate_program_payload(scope_regex: str, out_of_scope_regex: str, webhook_url: str) -> None:
+    try:
+        validate_scope_regex(scope_regex)
+        if out_of_scope_regex:
+            validate_scope_regex(out_of_scope_regex)
+    except UnsafeScopeRegexError as exc:
+        raise HTTPException(400, str(exc))
+    except Exception as exc:  # re.error etc.
+        raise HTTPException(400, f"invalid regex: {exc}")
+
+    if webhook_url and not is_public_http_target(webhook_url):
+        raise HTTPException(
+            400,
+            "webhook_url must be a public https/http URL — localhost, private IP ranges, "
+            "and link-local addresses are rejected to prevent SSRF",
+        )
 
 
 @router.post("", response_model=ProgramOut)
 async def create_program(payload: ProgramCreate, session: AsyncSession = Depends(get_session)):
-    try:
-        re.compile(payload.scope_regex)
-        if payload.out_of_scope_regex:
-            re.compile(payload.out_of_scope_regex)
-    except re.error as exc:
-        raise HTTPException(400, f"invalid regex: {exc}")
+    _validate_program_payload(payload.scope_regex, payload.out_of_scope_regex, payload.webhook_url)
 
     existing = await session.execute(select(Program).where(Program.name == payload.name))
     if existing.scalar_one_or_none():
@@ -63,6 +77,9 @@ async def update_monitoring(
     program = await session.get(Program, program_id)
     if not program:
         raise HTTPException(404, "program not found")
+
+    if webhook_url and not is_public_http_target(webhook_url):
+        raise HTTPException(400, "webhook_url rejected — must be a public https/http URL (SSRF guard)")
 
     program.monitoring_enabled = enabled
     program.monitoring_interval_minutes = max(interval_minutes, 15)

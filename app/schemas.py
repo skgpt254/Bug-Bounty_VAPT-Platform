@@ -39,6 +39,7 @@ class ScanRunOut(BaseModel):
     finished_at: datetime | None
     phases_run: str
     error: str
+    wildcard_dns: bool = False
 
     model_config = {"from_attributes": True}
 
@@ -50,6 +51,7 @@ class FindingOut(BaseModel):
     target: str
     name: str
     detail: str
+    confidence: str = "confirmed"
     is_new: bool
     first_seen_at: datetime
 

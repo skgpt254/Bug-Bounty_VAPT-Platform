@@ -4,11 +4,12 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import diff_engine
+from app.core.security import require_api_key
 from app.database import get_session
 from app.models import Program, ScanRun
 from app.schemas import DiffOut
 
-router = APIRouter(prefix="/api/programs", tags=["diffs"])
+router = APIRouter(prefix="/api/programs", tags=["diffs"], dependencies=[Depends(require_api_key)])
 
 
 @router.get("/{program_id}/diff/{scan_id}", response_model=DiffOut)

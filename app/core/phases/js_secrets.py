@@ -64,6 +64,7 @@ def regex_scan(bodies: dict[str, str]) -> list[dict]:
                     "target": url,
                     "name": f"possible_{name}",
                     "detail": snippet[:120],
+                    "confidence": "unconfirmed",  # regex-only match, not provider-verified — see trufflehog findings for verified ones
                 })
         for name, pattern in ENDPOINT_PATTERNS.items():
             for match in set(pattern.findall(body)):
@@ -74,6 +75,7 @@ def regex_scan(bodies: dict[str, str]) -> list[dict]:
                     "target": url,
                     "name": name,
                     "detail": path,
+                    "confidence": "confirmed",  # this is just "this string literally appears in the JS", not a vuln claim
                 })
     return findings
 
@@ -98,6 +100,7 @@ async def run_trufflehog(js_urls_file: Path, workdir: Path) -> list[dict]:
                 "target": rec.get("SourceMetadata", {}).get("Data", {}).get("Filesystem", {}).get("file", "js"),
                 "name": rec.get("DetectorName", "verified_secret"),
                 "detail": "Verified live credential — trufflehog confirmed it against the provider API.",
+                "confidence": "confirmed",
             })
     return findings
 

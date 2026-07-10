@@ -6,7 +6,7 @@ import aiohttp
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import settings
+from app.config import settings, is_public_http_target
 from app.models import AlertLog, Finding, Program
 from app.schemas import DiffOut
 
@@ -48,12 +48,19 @@ async def send_new_finding_alerts(session: AsyncSession, program: Program, diff:
     diff_for_message = diff.model_copy(update={"new_findings": truly_new})
 
     if webhook:
-        message = _format_message(program, diff_for_message)
-        try:
-            async with aiohttp.ClientSession() as http:
-                await http.post(webhook, json={"text": message}, timeout=10)
-        except Exception:
-            logger.exception("failed to deliver webhook alert for program %s", program.id)
+        if not is_public_http_target(webhook):
+            logger.warning(
+                "program %s has a webhook_url that resolves to a non-public/loopback/private "
+                "target — refusing to POST to it (SSRF guard). Use a real external webhook URL.",
+                program.id,
+            )
+        else:
+            message = _format_message(program, diff_for_message)
+            try:
+                async with aiohttp.ClientSession() as http:
+                    await http.post(webhook, json={"text": message}, timeout=aiohttp.ClientTimeout(total=10))
+            except Exception:
+                logger.exception("failed to deliver webhook alert for program %s", program.id)
     else:
         logger.info("no webhook configured for program %s — new findings recorded in DB only", program.id)
 

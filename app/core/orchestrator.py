@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import logging
 import time
-from datetime import datetime
 from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -30,10 +29,10 @@ from app.config import settings
 from app.core import diff_engine, alerting
 from app.core.phases import (
     passive_recon, dns_resolve, http_probe, crawl, js_secrets,
-    vuln_scan, fuzzing, cors_check, takeover_check, cloud_check,
+    vuln_scan, fuzzing, cors_check, takeover_check, cloud_check, enrichment,
 )
 from app.core.scope import ScopeFilter
-from app.models import Program, ScanRun, ScanMode, ScanStatus, Subdomain, Endpoint, Finding
+from app.models import Program, ScanRun, ScanMode, ScanStatus, Subdomain, Endpoint, Finding, utcnow
 
 logger = logging.getLogger("bugbounty.orchestrator")
 
@@ -49,7 +48,8 @@ async def run_scan(
     promoted to RUNNING and reused instead of creating a second row.
     """
     scope = ScopeFilter(program)
-    workdir = settings.workspace_path / program.name.replace(" ", "_") / datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    slug = settings.safe_workspace_slug(program.name)
+    workdir = settings.workspace_path / slug / utcnow().strftime("%Y%m%d_%H%M%S")
     workdir.mkdir(parents=True, exist_ok=True)
 
     if scan is None:
@@ -82,6 +82,13 @@ async def run_scan(
         live_records = await http_probe.run(probe_targets, workdir)
         live_urls = scope.filter([r["url"] for r in live_records])
         phases_run.append("http_probe")
+
+        # 3b. IP enrichment (Shodan InternetDB — free, no key needed): open
+        # ports and known CVEs on the IPs behind resolved hosts. Cheap and
+        # high-signal, so it always runs (not gated to full mode).
+        enrichment_findings = await enrichment.run(dns_result["resolved"], workdir)
+        all_findings += enrichment_findings
+        phases_run.append("enrichment")
 
         # 4. Crawl
         crawl_result = await crawl.run(live_urls, workdir)
@@ -126,6 +133,7 @@ async def run_scan(
                 program_id=program.id, scan_run_id=scan.id, hostname=host,
                 resolved_ip=dns_result["resolved"].get(host, ""),
                 source=",".join(passive["sources"].get(host, [])),
+                wildcard_suspect=dns_result["wildcard"] and host in dns_result["resolved"],
             ))
         for rec in live_records:
             session.add(Endpoint(
@@ -138,12 +146,14 @@ async def run_scan(
                 program_id=program.id, scan_run_id=scan.id,
                 finding_type=f["finding_type"], severity=f["severity"],
                 target=f["target"], name=f["name"], detail=f.get("detail", ""),
+                confidence=f.get("confidence", "confirmed"),
                 fingerprint=diff_engine.fingerprint(f["finding_type"], f["target"], f["name"]),
             ))
 
         scan.status = ScanStatus.COMPLETED
-        scan.finished_at = datetime.utcnow()
+        scan.finished_at = utcnow()
         scan.phases_run = ",".join(phases_run)
+        scan.wildcard_dns = dns_result["wildcard"]
         await session.commit()
 
         # ---- diff against previous run + alert on genuinely new findings ----
@@ -157,7 +167,7 @@ async def run_scan(
         logger.exception("scan %s failed", scan.id)
         scan.status = ScanStatus.FAILED
         scan.error = str(exc)
-        scan.finished_at = datetime.utcnow()
+        scan.finished_at = utcnow()
         scan.phases_run = ",".join(phases_run)
         await session.commit()
 

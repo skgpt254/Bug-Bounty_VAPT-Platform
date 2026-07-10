@@ -1,5 +1,5 @@
 import enum
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import DateTime, Enum, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -8,7 +8,10 @@ from app.database import Base
 
 
 def utcnow() -> datetime:
-    return datetime.utcnow()
+    # datetime.utcnow() is deprecated since 3.12; this gives the same naive
+    # UTC value (compatible with the existing naive DateTime columns) via
+    # the non-deprecated API.
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 class ScanStatus(str, enum.Enum):
@@ -29,6 +32,18 @@ class Severity(str, enum.Enum):
     MEDIUM = "medium"
     HIGH = "high"
     CRITICAL = "critical"
+
+
+# Enum storage/DB ordering is alphabetical by member name, not by actual
+# risk rank — anything that needs to sort findings by severity must use
+# this map instead of ORDER BY severity (see dashboard.py, api/findings.py).
+SEVERITY_RANK = {
+    Severity.CRITICAL.value: 4,
+    Severity.HIGH.value: 3,
+    Severity.MEDIUM.value: 2,
+    Severity.LOW.value: 1,
+    Severity.INFO.value: 0,
+}
 
 
 class Program(Base):
@@ -64,6 +79,9 @@ class ScanRun(Base):
     error: Mapped[str] = mapped_column(Text, default="")
     # Which phases actually ran, comma separated — useful for the dashboard.
     phases_run: Mapped[str] = mapped_column(String(500), default="")
+    # True if the root domain has a wildcard DNS record — when set, resolved
+    # subdomains alone are weaker evidence of a real host (see dns_resolve.py).
+    wildcard_dns: Mapped[bool] = mapped_column(default=False)
 
     program: Mapped["Program"] = relationship(back_populates="scan_runs")
     subdomains: Mapped[list["Subdomain"]] = relationship(back_populates="scan_run", cascade="all, delete-orphan")
@@ -82,6 +100,10 @@ class Subdomain(Base):
     resolved_ip: Mapped[str] = mapped_column(String(64), default="")
     source: Mapped[str] = mapped_column(String(120), default="")  # which tool(s) found it
     is_new: Mapped[bool] = mapped_column(default=False)  # relative to previous run
+    # True when the zone has wildcard DNS and this host's resolution is
+    # therefore not strong evidence of a real, intentionally-provisioned
+    # host — surfaced in the UI instead of silently presented as fact.
+    wildcard_suspect: Mapped[bool] = mapped_column(default=False)
 
     scan_run: Mapped["ScanRun"] = relationship(back_populates="subdomains")
 
@@ -115,6 +137,11 @@ class Finding(Base):
     target: Mapped[str] = mapped_column(String(1000))
     name: Mapped[str] = mapped_column(String(500))
     detail: Mapped[str] = mapped_column(Text, default="")
+    # "confirmed" (tool/signature-verified, e.g. nuclei template match,
+    # trufflehog-verified secret) vs "unconfirmed" (heuristic/fingerprint
+    # match that can false-positive, e.g. CNAME-pattern takeover guess).
+    # Surfaced in the UI so a researcher doesn't treat a guess as a fact.
+    confidence: Mapped[str] = mapped_column(String(20), default="confirmed")
     # Stable dedupe key: hash of (finding_type, target, name). Used to detect
     # "new" findings across runs without relying on exact-text matching.
     fingerprint: Mapped[str] = mapped_column(String(64), index=True)

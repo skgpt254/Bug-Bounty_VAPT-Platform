@@ -6,3 +6,4 @@ bugbounty.db
 workspaces/
 .pytest_cache/
 *.egg-info/
+.session_secret

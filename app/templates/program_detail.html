@@ -2,35 +2,56 @@
 {% block title %}{{ program.name }} — Recon/VAPT{% endblock %}
 {% block content %}
 
-<a href="/" class="muted" style="text-decoration:none; font-size:12px;">&larr; all programs</a>
+<a href="/" class="back-link">&larr; all programs</a>
 
-<div class="panel-header" style="margin-top:14px;">
+<div class="page-header">
   <div>
-    <h2 style="font-size:20px;">{{ program.name }}</h2>
-    <div class="muted" style="font-size:12px;">{{ program.root_domain }} &middot; scope <code>{{ program.scope_regex }}</code></div>
+    <h1>{{ program.name }}</h1>
+    <div class="subtitle">{{ program.root_domain }} &middot; scope <code class="mono">{{ program.scope_regex }}</code></div>
   </div>
   <div class="actions" style="margin-top:0;">
     <form method="post" action="/programs/{{ program.id }}/scan" style="display:inline;">
       <input type="hidden" name="mode" value="incremental" />
-      <button type="submit" class="secondary">Quick scan</button>
+      <button type="submit" class="secondary" {% if active_scan %}disabled{% endif %}>Quick scan</button>
     </form>
     <form method="post" action="/programs/{{ program.id }}/scan" style="display:inline;">
       <input type="hidden" name="mode" value="full" />
-      <button type="submit">Full scan (incl. fuzzing)</button>
+      <button type="submit" {% if active_scan %}disabled{% endif %}>Full scan (incl. fuzzing)</button>
     </form>
   </div>
 </div>
+
+{% if active_scan %}
+<div class="panel" id="scan-status-poll" data-program-id="{{ program.id }}">
+  <div class="panel-header">
+    <h2>Scan #{{ active_scan.id }} — <span class="status-{{ active_scan.status.value }}">{{ active_scan.status.value }}</span></h2>
+    <span class="count">{{ active_scan.mode.value }} mode</span>
+  </div>
+  <div class="phase-list">
+    {% for phase in ["passive_recon","dns_resolve","http_probe","enrichment","crawl","js_secrets","vuln_scan","cors_check","takeover_check","cloud_check","fuzzing"] %}
+      <span class="phase-chip {% if phase in active_scan.phases_run %}done{% endif %}">{{ phase }}</span>
+    {% endfor %}
+  </div>
+  <p class="muted" style="font-size:12.5px; margin-top:14px; margin-bottom:0;">This page refreshes automatically when the scan finishes.</p>
+</div>
+{% endif %}
 
 <div class="panel">
   <div class="panel-header"><h2>Continuous monitoring</h2></div>
   <form method="post" action="/programs/{{ program.id }}/monitoring">
     <label><input type="checkbox" name="enabled" value="true" {% if program.monitoring_enabled %}checked{% endif %} />
-      Run an incremental scan automatically, and alert only on genuinely new findings
+      Run an incremental scan automatically, alert only on genuinely new findings
     </label>
-    <label>Interval (minutes)</label>
-    <input type="number" name="interval_minutes" value="{{ program.monitoring_interval_minutes }}" min="15" />
-    <label>Webhook URL</label>
-    <input type="url" name="webhook_url" value="{{ program.webhook_url }}" placeholder="https://hooks.slack.com/services/..." />
+    <div class="grid-2">
+      <div>
+        <label>Interval (minutes)</label>
+        <input type="number" name="interval_minutes" value="{{ program.monitoring_interval_minutes }}" min="15" />
+      </div>
+      <div>
+        <label>Webhook URL</label>
+        <input type="url" name="webhook_url" value="{{ program.webhook_url }}" placeholder="https://hooks.slack.com/services/..." />
+      </div>
+    </div>
     <div class="actions"><button type="submit" class="secondary">Save monitoring settings</button></div>
   </form>
 </div>
@@ -39,20 +60,29 @@
 <div class="panel" style="border-color: var(--accent);">
   <div class="panel-header"><h2>Since last scan</h2></div>
   {% if diff.new_subdomains %}
-    <p><strong>{{ diff.new_subdomains|length }}</strong> new subdomain(s): {{ diff.new_subdomains|join(", ") }}</p>
+    <p style="margin:0 0 8px;"><strong>{{ diff.new_subdomains|length }}</strong> new subdomain(s): <span class="text-mono">{{ diff.new_subdomains|join(", ") }}</span></p>
   {% endif %}
   {% if diff.new_endpoints %}
-    <p><strong>{{ diff.new_endpoints|length }}</strong> new endpoint(s)</p>
+    <p style="margin:0 0 8px;"><strong>{{ diff.new_endpoints|length }}</strong> new live endpoint(s)</p>
   {% endif %}
   {% if diff.new_findings %}
-    <p><strong>{{ diff.new_findings|length }}</strong> new finding(s) — flagged <span class="tag">NEW</span> in the table below</p>
+    <p style="margin:0;"><strong>{{ diff.new_findings|length }}</strong> new finding(s) — marked <span class="badge badge-new">NEW</span> below</p>
   {% endif %}
+</div>
+{% endif %}
+
+{% if latest_completed and latest_completed.wildcard_dns %}
+<div class="alert alert-info">
+  This zone has wildcard DNS — any subdomain resolves to something even if it wasn't intentionally
+  provisioned. Subdomains flagged <span class="badge badge-wildcard">wildcard</span> below are weaker
+  evidence of a real, distinct host; cross-check them against the live-endpoint list.
 </div>
 {% endif %}
 
 <div class="panel">
   <div class="panel-header"><h2>Scan history</h2></div>
   {% if scans %}
+  <div class="table-wrap">
   <table>
     <thead><tr><th>ID</th><th>Mode</th><th>Status</th><th>Started</th><th>Phases run</th></tr></thead>
     <tbody>
@@ -62,11 +92,12 @@
         <td>{{ scan.mode.value }}</td>
         <td class="status-{{ scan.status.value }}">{{ scan.status.value }}</td>
         <td class="muted">{{ scan.started_at.strftime("%Y-%m-%d %H:%M UTC") }}</td>
-        <td class="muted">{{ scan.phases_run or "—" }}</td>
+        <td class="muted wrap">{{ scan.phases_run or "—" }}</td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
+  </div>
   {% else %}
   <div class="empty-state">No scans yet — trigger one above.</div>
   {% endif %}
@@ -76,23 +107,36 @@
 <div class="panel">
   <div class="panel-header">
     <h2>Findings — scan #{{ latest_completed.id }}</h2>
-    <span class="muted" style="font-size:12px;">{{ findings|length }} total</span>
+    <span class="count">{{ findings|length }} total</span>
   </div>
   {% if findings %}
-  <table>
-    <thead><tr><th>Severity</th><th>Type</th><th>Name</th><th>Target</th><th>Detail</th></tr></thead>
+  <input type="text" placeholder="Filter findings…" data-filter-target="findings-table" style="margin-bottom:12px;" />
+  <div class="table-wrap">
+  <table id="findings-table">
+    <thead><tr><th>Severity</th><th>Type</th><th>Name</th><th>Target</th><th>Confidence</th><th>Detail</th></tr></thead>
     <tbody>
       {% for f in findings %}
-      <tr class="{% if f.is_new %}is-new{% endif %}">
-        <td><span class="sev-chip sev-{{ f.severity.value }}">{{ f.severity.value }}</span></td>
+      <tr>
+        <td><span class="sev-item"><span class="sev-dot sev-{{ f.severity.value }}"></span>{{ f.severity.value }}</span></td>
         <td class="muted">{{ f.finding_type }}</td>
-        <td>{{ f.name }}</td>
-        <td class="muted" style="max-width:280px; overflow-wrap:anywhere;">{{ f.target }}</td>
-        <td class="muted" style="max-width:320px; overflow-wrap:anywhere;">{{ f.detail[:160] }}</td>
+        <td>{{ f.name }} {% if f.is_new %}<span class="badge badge-new">NEW</span>{% endif %}</td>
+        <td class="text-mono wrap" style="max-width:260px;">
+          {{ f.target }}
+          <button class="copy-btn" data-copy="{{ f.target }}" title="Copy target">copy</button>
+        </td>
+        <td>
+          {% if f.confidence == "unconfirmed" %}
+            <span class="badge badge-unconfirmed">needs verification</span>
+          {% else %}
+            <span class="badge badge-confirmed">confirmed</span>
+          {% endif %}
+        </td>
+        <td class="muted wrap" style="max-width:320px;">{{ f.detail[:220] }}</td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
+  </div>
   {% else %}
   <div class="empty-state">No findings on this scan. Clean result.</div>
   {% endif %}
@@ -100,23 +144,53 @@
 
 <div class="panel">
   <div class="panel-header"><h2>Assets — scan #{{ latest_completed.id }}</h2></div>
-  <div class="tabs">
-    <a href="#subdomains" class="active">Subdomains ({{ subdomains|length }})</a>
-    <a href="#endpoints">Live endpoints ({{ endpoints|length }})</a>
+  <div class="tabs" data-tabs>
+    <button class="tab-btn active" data-tab-btn="subdomains">Subdomains ({{ subdomains|length }})</button>
+    <button class="tab-btn" data-tab-btn="endpoints">Live endpoints ({{ endpoints|length }})</button>
   </div>
-  <table id="subdomains">
-    <thead><tr><th>Host</th><th>Resolved IP</th><th>Source</th></tr></thead>
-    <tbody>
-      {% for s in subdomains[:100] %}
-      <tr class="{% if s.is_new %}is-new{% endif %}">
-        <td>{{ s.hostname }}</td>
-        <td class="muted">{{ s.resolved_ip or "—" }}</td>
-        <td class="muted">{{ s.source or "—" }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  {% if subdomains|length > 100 %}<div class="muted" style="margin-top:8px;">showing first 100 of {{ subdomains|length }}</div>{% endif %}
+
+  <div class="tab-panel active" data-tab-panel="subdomains">
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Host</th><th>Resolved IP</th><th>Source</th><th></th></tr></thead>
+      <tbody>
+        {% for s in subdomains[:150] %}
+        <tr>
+          <td class="text-mono">{{ s.hostname }} {% if s.is_new %}<span class="badge badge-new">NEW</span>{% endif %}</td>
+          <td class="text-mono muted">{{ s.resolved_ip or "—" }}</td>
+          <td class="muted">{{ s.source or "—" }}</td>
+          <td>
+            {% if s.wildcard_suspect %}<span class="badge badge-wildcard">wildcard</span>{% endif %}
+            <button class="copy-btn" data-copy="{{ s.hostname }}" title="Copy">copy</button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% if subdomains|length > 150 %}<div class="muted" style="margin-top:10px; font-size:12.5px;">showing first 150 of {{ subdomains|length }}</div>{% endif %}
+  </div>
+
+  <div class="tab-panel" data-tab-panel="endpoints">
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>URL</th><th>Status</th><th>Title</th><th>Tech</th><th></th></tr></thead>
+      <tbody>
+        {% for e in endpoints[:150] %}
+        <tr>
+          <td class="text-mono wrap" style="max-width:340px;">{{ e.url }} {% if e.is_new %}<span class="badge badge-new">NEW</span>{% endif %}</td>
+          <td class="muted">{{ e.status_code or "—" }}</td>
+          <td class="muted wrap" style="max-width:220px;">{{ e.title or "—" }}</td>
+          <td class="muted wrap" style="max-width:220px;">{{ e.tech or "—" }}</td>
+          <td><button class="copy-btn" data-copy="{{ e.url }}" title="Copy">copy</button></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% if endpoints|length > 150 %}<div class="muted" style="margin-top:10px; font-size:12.5px;">showing first 150 of {{ endpoints|length }}</div>{% endif %}
+    {% if not endpoints %}<div class="empty-state">No live endpoints detected on this scan.</div>{% endif %}
+  </div>
 </div>
 {% endif %}
 
