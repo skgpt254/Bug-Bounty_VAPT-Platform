@@ -81,7 +81,7 @@ async def probe_with_cli(hosts: list[str], workdir: Path) -> list[dict]:
     input_data = "\n".join(hosts)
     result = await run_tool(
         "httpx",
-        ["-silent", "-json", "-title", "-tech-detect", "-status-code", "-content-length",
+        ["-silent", "-nc", "-json", "-title", "-tech-detect", "-status-code", "-content-length",
          "-rate-limit", str(int(settings.global_rate_limit)), "-random-agent",
          "-H", f"X-Bug-Bounty: researcher={settings.researcher_name}"],
         workdir=workdir,

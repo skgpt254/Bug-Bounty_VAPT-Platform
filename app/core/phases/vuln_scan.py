@@ -30,7 +30,7 @@ async def run(live_urls: list[str], workdir: Path) -> list[dict]:
     input_data = "\n".join(live_urls)
     result = await run_tool(
         "nuclei",
-        ["-jsonl", "-silent",
+        ["-jsonl", "-silent", "-nc",
          "-rate-limit", str(int(settings.global_rate_limit)),
          "-random-agent",
          "-tags", "cve,exposures,misconfiguration,default-login,panel,backup,debug,redirect,sqli,ssrf,xss,lfi,rce,idor",

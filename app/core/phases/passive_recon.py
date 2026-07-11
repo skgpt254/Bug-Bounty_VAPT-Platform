@@ -13,7 +13,7 @@ from pathlib import Path
 import aiohttp
 
 from app.config import settings
-from app.core.tool_runner import has_tool, run_tool
+from app.core.tool_runner import has_tool, run_tool, strip_ansi
 
 logger = logging.getLogger("bugbounty.passive_recon")
 
@@ -92,14 +92,14 @@ async def otx(session: aiohttp.ClientSession, domain: str) -> set[str]:
 async def subfinder(domain: str, workdir: Path) -> set[str]:
     result = await run_tool(
         "subfinder",
-        ["-d", domain, "-all", "-recursive", "-silent", "-o", "subfinder.txt"],
+        ["-d", domain, "-all", "-recursive", "-silent", "-nc", "-o", "subfinder.txt"],
         workdir=workdir,
         output_file=None,  # subfinder writes its own -o file
         timeout=300,
     )
     out = workdir / "subfinder.txt"
     if result.ran and result.ok and out.exists():
-        return {line.strip() for line in out.read_text().splitlines() if line.strip()}
+        return {strip_ansi(line).strip() for line in out.read_text(errors="replace").splitlines() if line.strip()}
     return set()
 
 
@@ -107,7 +107,7 @@ async def assetfinder(domain: str, workdir: Path) -> set[str]:
     result = await run_tool("assetfinder", ["--subs-only", domain], workdir=workdir,
                              output_file="assetfinder.txt", timeout=120)
     if result.ok and result.stdout_path:
-        return {line.strip() for line in result.stdout_path.read_text().splitlines() if line.strip()}
+        return {strip_ansi(line).strip() for line in result.stdout_path.read_text(errors="replace").splitlines() if line.strip()}
     return set()
 
 
@@ -121,7 +121,7 @@ async def github_subdomains(domain: str, workdir: Path) -> set[str]:
     )
     out = workdir / "github_subs.txt"
     if result.ok and out.exists():
-        return {line.strip() for line in out.read_text().splitlines() if line.strip()}
+        return {strip_ansi(line).strip() for line in out.read_text(errors="replace").splitlines() if line.strip()}
     return set()
 
 

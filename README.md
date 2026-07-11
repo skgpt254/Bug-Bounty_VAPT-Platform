@@ -9,6 +9,31 @@ scan") or on a schedule ("continuous monitoring").
 
 ## What's in this version
 
+- **Critical fix: removed the unused Python `httpx` package from
+  requirements.txt.** It shadowed ProjectDiscovery's `httpx` CLI binary
+  inside `venv/bin` — once the venv was activated, every HTTP-probe call
+  silently ran the wrong `httpx` (the Python package's CLI, which doesn't
+  understand `-silent`/`-json`/etc.), exited 1 instantly, and every scan
+  reported "0 live hosts" no matter what the target actually looked like.
+  This is exactly the kind of failure `tool_warnings` (below) now catches —
+  it's what surfaced this bug in the first place. If you're setting this up
+  fresh, this is already fixed; if you're upgrading, re-run
+  `pip install -r requirements.txt` in a clean venv, or at minimum
+  `pip uninstall httpx -y`.
+- **Tool failures are no longer silent.** Every non-zero CLI exit is logged
+  with the resolved binary path (so a PATH collision like the one above is
+  immediately diagnosable) and surfaced as a `tool_warnings` banner on the
+  scan results page — "0 findings" and "0 findings because a tool crashed"
+  no longer look identical.
+- **ANSI color codes no longer leak into parsed data.** `dnsx`'s plain-text
+  output previously leaked raw escape sequences into the stored IP field on
+  some versions even with `-silent` set; DNS resolution now uses `dnsx -json`
+  (structured, unambiguous) with `strip_ansi()` as a second line of defense
+  across every other text-parsing phase (subfinder, assetfinder, katana).
+- **Broken upstream phases no longer crash downstream tools.** If an earlier
+  phase produces zero targets (e.g. no live hosts), tools like `katana` that
+  treat empty stdin as a fatal error are now skipped with a clear
+  "no input data" reason instead of being invoked and crashing.
 - **Redesigned UI** — single-accent dark theme, severity conveyed by small
   dots/labels instead of blocks of color, real tabs, filterable tables,
   copy-to-clipboard, live scan-progress polling (no manual refresh needed).

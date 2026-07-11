@@ -84,7 +84,7 @@ async def nuclei_takeover_check(live_urls: list[str], workdir: Path) -> list[dic
         return []
     result = await run_tool(
         "nuclei",
-        ["-jsonl", "-silent", "-tags", "takeover",
+        ["-jsonl", "-silent", "-nc", "-tags", "takeover",
          "-rate-limit", str(int(settings.global_rate_limit)),
          "-H", f"X-Bug-Bounty: researcher={settings.researcher_name}"],
         workdir=workdir, output_file="nuclei_takeover.jsonl", timeout=600,

@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -30,6 +31,19 @@ logger = logging.getLogger("bugbounty.tool_runner")
 
 _TOOL_CACHE: dict[str, bool] = {}
 _STDERR_EXCERPT_LEN = 500
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]")
+
+
+def strip_ansi(text: str) -> str:
+    """Strip ANSI color/escape codes. Several ProjectDiscovery tools (dnsx in
+    particular) can emit color codes in their plain-text output even with
+    -silent set, depending on version and whether they think stdout is a
+    TTY — piping through a Python subprocess sometimes isn't detected
+    correctly. Every phase that parses raw (non-JSON) tool output should
+    run it through this before splitting/parsing fields, rather than
+    trusting a -nc flag alone to be honored.
+    """
+    return _ANSI_RE.sub("", text)
 
 
 def has_tool(name: str) -> bool:
@@ -80,6 +94,17 @@ async def run_tool(
         logger.info("skip %s: not installed", name)
         return ToolResult(tool=name, command=[name, *args], returncode=-1, stdout_path=None, ran=False,
                            skipped_reason="not installed")
+
+    if input_data is not None and not input_data.strip():
+        # Several tools (katana in particular) treat empty stdin as a fatal
+        # usage error, not "nothing to do" — e.g. "[FTL] could not execute
+        # crawling: cause=no input provided for crawling". That's a correct
+        # empty result from *our* side (an upstream phase found zero
+        # targets), not a tool failure, so skip the call entirely rather
+        # than let it exit non-zero and generate a misleading warning.
+        logger.debug("skip %s: no input data (upstream phase produced zero targets)", name)
+        return ToolResult(tool=name, command=[name, *args], returncode=-1, stdout_path=None, ran=False,
+                           skipped_reason="no input data")
 
     workdir.mkdir(parents=True, exist_ok=True)
     out_path = workdir / output_file if output_file else None

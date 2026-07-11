@@ -13,7 +13,7 @@ from urllib.parse import urljoin, urlparse
 import aiohttp
 
 from app.config import settings
-from app.core.tool_runner import has_tool, run_tool
+from app.core.tool_runner import has_tool, run_tool, strip_ansi
 
 logger = logging.getLogger("bugbounty.crawl")
 
@@ -25,7 +25,7 @@ async def crawl_with_katana(urls: list[str], workdir: Path, depth: int = 3, dura
     input_data = "\n".join(urls)
     result = await run_tool(
         "katana",
-        ["-silent", "-jc", "-kf", "all", "-d", str(depth), "-timeout", "10",
+        ["-silent", "-nc", "-jc", "-kf", "all", "-d", str(depth), "-timeout", "10",
          "-rate-limit", str(int(settings.global_rate_limit)), "-c", "10",
          "-H", f"X-Bug-Bounty: researcher={settings.researcher_name}"],
         workdir=workdir,
@@ -34,7 +34,7 @@ async def crawl_with_katana(urls: list[str], workdir: Path, depth: int = 3, dura
         input_data=input_data,
     )
     if result.ok and result.stdout_path:
-        return [line.strip() for line in result.stdout_path.read_text().splitlines() if line.strip()]
+        return [strip_ansi(line).strip() for line in result.stdout_path.read_text(errors="replace").splitlines() if line.strip()]
     return []
 
 

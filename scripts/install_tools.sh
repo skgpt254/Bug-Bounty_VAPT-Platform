@@ -40,6 +40,12 @@ curl -sSfL https://raw.githubusercontent.com/trufflesecurity/trufflehog/main/scr
 echo "==> Updating nuclei templates"
 nuclei -update-templates -silent || true
 
+echo "==> Warming up httpx (it downloads a ~90MB classification model on its"
+echo "    very first run — doing that now, at setup time, means a live scan"
+echo "    never eats that delay/first-run-network-hiccup risk invisibly)"
+echo "example.com" | httpx -silent -json > /dev/null 2>&1 || \
+  echo "httpx warm-up run failed/skipped — it'll just download on first real scan instead, no harm done"
+
 echo "==> Cloning SecLists (optional, large — used for fuzzing wordlists if present)"
 if [ ! -d "/usr/share/wordlists/seclists" ]; then
   sudo mkdir -p /usr/share/wordlists

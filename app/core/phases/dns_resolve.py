@@ -6,6 +6,7 @@ still works on a box that only has Python installed.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import random
 import string
@@ -14,7 +15,7 @@ from pathlib import Path
 import dns.asyncresolver
 import dns.exception
 
-from app.core.tool_runner import has_tool, run_tool
+from app.core.tool_runner import has_tool, run_tool, strip_ansi
 
 logger = logging.getLogger("bugbounty.dns_resolve")
 
@@ -55,24 +56,37 @@ async def resolve_native(hosts: list[str], concurrency: int = 100) -> dict[str, 
 
 
 async def resolve_with_dnsx(hosts: list[str], workdir: Path) -> dict[str, str]:
+    """Uses dnsx's -json output rather than parsing its plain-text -resp
+    columns. The text format's column layout varies across dnsx versions and
+    some versions emit ANSI color codes even with -silent set (confirmed:
+    this previously leaked raw escape sequences like "\\x1b[35mA\\x1b[0m"
+    straight into the stored IP field). JSON is structured and unambiguous
+    regardless of terminal-color behavior — strip_ansi() is still applied as
+    a second line of defense in case a line is malformed.
+    """
     input_data = "\n".join(hosts)
     result = await run_tool(
         "dnsx",
-        ["-silent", "-a", "-resp"],
+        ["-silent", "-a", "-json", "-nc"],
         workdir=workdir,
-        output_file="dnsx.txt",
+        output_file="dnsx.jsonl",
         timeout=300,
         input_data=input_data,
     )
     resolved: dict[str, str] = {}
     if result.ok and result.stdout_path:
-        for line in result.stdout_path.read_text().splitlines():
-            # dnsx -resp format: host [ip]
-            parts = line.strip().split()
-            if len(parts) >= 2:
-                host = parts[0]
-                ip = parts[1].strip("[]")
-                resolved[host] = ip
+        for raw_line in result.stdout_path.read_text(errors="replace").splitlines():
+            line = strip_ansi(raw_line).strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            host = rec.get("host", "")
+            a_records = rec.get("a") or []
+            if host and a_records:
+                resolved[host] = a_records[0]
     return resolved
 
 
